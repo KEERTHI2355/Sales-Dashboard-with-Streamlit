@@ -2,102 +2,153 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+from pathlib import Path
 
-# ---------- CONFIG ----------
-# Use whichever path you have the CSV at. Example local path you shared:
-DATA_PATH = r"data\sales_dataset.csv"
-# If you keep dataset in repo/data/ then use: DATA_PATH = "data/sales_dataset.csv"
+# CONFIG
+st.set_page_config(
+    page_title="Sales Insights Dashboard",
+    layout="wide"
+)
 
-# ---------- LOAD ----------
+BASE_DIR = Path(__file__).resolve().parent.parent
+DATA_PATH = BASE_DIR / "data" / "sales_cleaned.csv"
+
+
+# LOAD DATA
 @st.cache_data
-def load_data(path):
-    df = pd.read_csv(path, parse_dates=["Order Date"], low_memory=False)
-    # ensure order_month column exists (string)
+def load_data(path: Path) -> pd.DataFrame:
+    df = pd.read_csv(path, parse_dates=["Order Date"])
     if "order_month" not in df.columns:
-        df["order_month"] = df["Order Date"].dt.to_period("M").astype(str)
+        df["order_month"] = df["Order Date"].dt.to_period("M").astype(str) # type: ignore
     return df
 
 df = load_data(DATA_PATH)
 
-# Function to export to EXCEL
+
+# EXCEL EXPORT FUNCTION
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
         df.to_excel(writer, sheet_name="raw_data", index=False)
-        # example summaries:
-        df.groupby("Product")["Sales"].sum().reset_index().to_excel(writer, sheet_name="top_products", index=False)
-        df.groupby("Category")["Sales"].sum().reset_index().to_excel(writer, sheet_name="category_summary", index=False)
-        df.groupby("Region")["Sales"].sum().reset_index().to_excel(writer, sheet_name="region_summary", index=False)
+
+        df.groupby("Product")["Sales"].sum().reset_index() \
+            .to_excel(writer, sheet_name="product_sales", index=False)
+
+        df.groupby("Category")["Sales"].sum().reset_index() \
+            .to_excel(writer, sheet_name="category_sales", index=False)
+
+        df.groupby("Region")["Sales"].sum().reset_index() \
+            .to_excel(writer, sheet_name="region_sales", index=False)
+
     return buffer.getvalue()
 
-# ---------- FILTERS ----------
+
+# SIDEBAR FILTERS
 st.sidebar.header("Filters")
+
 min_date = df["Order Date"].min().date()
 max_date = df["Order Date"].max().date()
-date_range = st.sidebar.date_input("Order date range", [min_date, max_date], min_value=min_date, max_value=max_date)
 
-selected_regions = st.sidebar.multiselect("Region", options=df["Region"].unique(), default=list(df["Region"].unique()))
-selected_cats = st.sidebar.multiselect("Category", options=df["Category"].unique(), default=list(df["Category"].unique()))
+date_range = st.sidebar.date_input(
+    "Order Date Range",
+    [min_date, max_date],
+    min_value=min_date,
+    max_value=max_date
+)
+
+regions = st.sidebar.multiselect(
+    "Region",
+    options=sorted(df["Region"].unique()),
+    default=list(df["Region"].unique())
+)
+
+categories = st.sidebar.multiselect(
+    "Category",
+    options=sorted(df["Category"].unique()),
+    default=list(df["Category"].unique())
+)
 
 
-# UI - should be placed where the export button is needed
-st.sidebar.markdown("### Export")
-excel_bytes = to_excel_bytes(df)
+# APPLY FILTERS
+start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1]) # type: ignore
+
+mask = (
+    (df["Order Date"] >= start) &
+    (df["Order Date"] <= end) &
+    (df["Region"].isin(regions)) &
+    (df["Category"].isin(categories))
+)
+
+df_f = df.loc[mask].copy()
+
+
+# KPI CALCULATIONS
+total_revenue = df_f["Sales"].sum()
+total_orders = df_f["Order ID"].nunique()
+avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
+
+monthly_sales = df_f.groupby("order_month")["Sales"].sum().sort_index()
+
+mom_growth = np.nan
+if len(monthly_sales) >= 2 and monthly_sales.iloc[-2] != 0:
+    mom_growth = (
+        (monthly_sales.iloc[-1] - monthly_sales.iloc[-2]) /
+        monthly_sales.iloc[-2] * 100
+    )
+
+
+# MAIN UI
+st.title("📊 Sales Insights Dashboard")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Total Revenue", f"₹{total_revenue:,.0f}")
+c2.metric("Total Orders", f"{total_orders:,}")
+c3.metric("Average Order Value", f"₹{avg_order_value:,.0f}")
+c4.metric(
+    "MoM Revenue Growth",
+    f"{mom_growth:.2f}%" if not np.isnan(mom_growth) else "N/A"
+)
+
+st.divider()
+
+
+# TOP PRODUCTS
+st.subheader("Top Products by Sales")
+
+top_products = (
+    df_f.groupby("Product")["Sales"]
+    .sum()
+    .sort_values(ascending=False)
+    .head(5)
+    .reset_index()
+)
+
+st.dataframe(
+    top_products.assign(
+        Sales=top_products["Sales"].apply(lambda x: f"₹{x:,.0f}")
+    ),
+    use_container_width=True
+)
+
+
+# CHARTS
+st.subheader("Monthly Revenue Trend")
+st.line_chart(monthly_sales)
+
+st.subheader("Sales by Region")
+region_sales = df_f.groupby("Region")["Sales"].sum()
+st.bar_chart(region_sales)
+
+
+# EXPORT SECTION
+st.sidebar.markdown("---")
+st.sidebar.subheader("Export")
+
+excel_data = to_excel_bytes(df_f)
+
 st.sidebar.download_button(
-    label="Download Excel report",
-    data=excel_bytes,
+    label="Download Excel Report",
+    data=excel_data,
     file_name="sales_report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-
-# ---------- APPLY FILTERS ----------
-start, end = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
-mask = (df["Order Date"] >= start) & (df["Order Date"] <= end) & df["Region"].isin(selected_regions) & df["Category"].isin(selected_cats)
-df_f = df.loc[mask].copy()
-
-# ---------- KPIs ----------
-st.title("Sales Insights — KPI Overview")
-
-# KPI calculations
-total_revenue = df_f["Sales"].sum()
-total_orders = df_f.shape[0]
-avg_order_value = total_revenue / total_orders if total_orders > 0 else 0
-
-# monthly revenue for growth calculation
-monthly = df_f.groupby("order_month")["Sales"].sum().sort_index()
-monthly_last = monthly.iloc[-1] if len(monthly) >= 1 else np.nan
-monthly_prev = monthly.iloc[-2] if len(monthly) >= 2 else np.nan
-monthly_growth = ((monthly_last - monthly_prev) / monthly_prev * 100) if pd.notna(monthly_prev) and monthly_prev != 0 else np.nan
-
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("Total Revenue", f"₹{total_revenue:,.0f}")
-col2.metric("Total Orders", f"{total_orders:,}")
-col3.metric("Avg Order Value", f"₹{avg_order_value:,.0f}")
-# show monthly growth with sign
-if pd.notna(monthly_growth):
-    col4.metric("MoM Revenue Growth", f"{monthly_growth:.2f}%", delta=f"{monthly_last:,.0f}")
-else:
-    col4.metric("MoM Revenue Growth", "N/A")
-
-st.markdown("---")
-
-# show top product
-top_product = df_f.groupby("Product")["Sales"].sum().sort_values(ascending=False).head(1)
-if not top_product.empty:
-    p_name = top_product.index[0]
-    p_sales = top_product.values[0]
-    st.subheader("Top Product (by Sales)")
-    st.write(f"**{p_name}** — ₹{p_sales:,.0f}")
-
-# add a small table of top 5 products
-top5 = df_f.groupby("Product")["Sales"].sum().sort_values(ascending=False).head(5).reset_index()
-st.table(top5.assign(Sales=top5["Sales"].apply(lambda x: f"₹{x:,.0f}")))
-
-# ---------- Basic charts below ----------
-st.markdown("### Monthly Revenue Trend")
-st.line_chart(monthly)
-
-st.markdown("### Sales by Region")
-region_sales = df_f.groupby("Region")["Sales"].sum().reindex(df_f["Region"].unique())
-st.bar_chart(region_sales)
-

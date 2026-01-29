@@ -1,12 +1,7 @@
-# 📊 Sales Insights Dashboard using Streamlit
+# 📊 Sales Insights Dashboard
 
 The **Sales Insights Dashboard** is an end-to-end data analysis and visualization project built using **Python, Pandas, Matplotlib/Seaborn, and Streamlit**, designed to help businesses understand sales performance across products, categories, and regions through a clean dataset, exploratory data analysis (EDA), KPI computation, and an interactive dashboard that highlights best-selling products, category-wise contributions, regional performance, and trends over time, while also providing **Excel export functionality** for easy summary report downloads and showcasing a strong data analytics workflow suitable for **Data Analyst, BI Analyst, and Python-based roles**.
 
-![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python)
-![Power BI](https://img.shields.io/badge/Power%20BI-Dashboard-yellow?logo=powerbi)
-![Streamlit](https://img.shields.io/badge/Streamlit-App-red?logo=streamlit)
-![Pandas](https://img.shields.io/badge/Pandas-Data%20Analysis-green?logo=pandas)
-![Status](https://img.shields.io/badge/Project-Completed-success)
 
 ## 🧭 Overview  
 

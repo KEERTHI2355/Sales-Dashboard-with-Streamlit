@@ -1,6 +1,6 @@
 import pandas as pd
 
-df = pd.read_csv("data\sales_dataset.csv", parse_dates=["Order Date"])
+df = pd.read_csv("data/sales_cleaned.csv", parse_dates=["Order Date"])
 
 # ---- KPI Calculations ----
 total_sales = df["Sales"].sum()

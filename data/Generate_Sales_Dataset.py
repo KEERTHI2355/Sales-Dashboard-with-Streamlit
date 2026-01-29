@@ -27,6 +27,6 @@ df = pd.DataFrame({
 df["Sales"] = df["Quantity"] * df["Price"]
 
 # Save dataset
-df.to_csv("data\sales_dataset.csv", index=False)
+df.to_csv("sales_dataset.csv", index=False)
 
 print("Dataset created successfully! File saved as: sales_dataset.csv")
